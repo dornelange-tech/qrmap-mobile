@@ -1,0 +1,61 @@
+{
+  "expo": {
+    "name": "QRMap Voyage",
+    "slug": "qrmap-voyage",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#1a1a2e"
+    },
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.qrmap.voyage",
+      "infoPlist": {
+        "NSCameraUsageDescription": "L'application utilise la caméra pour scanner les QR codes des itinéraires.",
+        "NSLocationWhenInUseUsageDescription": "L'application utilise votre position GPS pour vous guider vers les lieux de votre itinéraire.",
+        "NSLocationAlwaysUsageDescription": "L'application utilise votre position GPS pour la navigation."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#1a1a2e"
+      },
+      "package": "com.qrmap.voyage",
+      "permissions": [
+        "CAMERA",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "INTERNET",
+        "ACCESS_NETWORK_STATE",
+        "WRITE_EXTERNAL_STORAGE",
+        "READ_EXTERNAL_STORAGE"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "L'application utilise la caméra pour scanner les QR codes."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "L'application utilise votre GPS pour la navigation."
+        }
+      ]
+    ],
+    "extra": {
+      "apiBaseUrl": "https://www.qrmap.site"
+    }
+  }
+}
