@@ -11,14 +11,22 @@
       "resizeMode": "contain",
       "backgroundColor": "#1a1a2e"
     },
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.qrmap.voyage",
+      "deploymentTarget": "15.1",
       "infoPlist": {
-        "NSCameraUsageDescription": "L'application utilise la caméra pour scanner les QR codes des itinéraires.",
-        "NSLocationWhenInUseUsageDescription": "L'application utilise votre position GPS pour vous guider vers les lieux de votre itinéraire.",
+        "NSCameraUsageDescription": "L'application utilise la cam\u00e9ra pour scanner les QR codes des itin\u00e9raires.",
+        "NSLocationWhenInUseUsageDescription": "L'application utilise votre position GPS pour vous guider vers les lieux de votre itin\u00e9raire.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "L'application utilise votre position GPS pour la navigation.",
         "NSLocationAlwaysUsageDescription": "L'application utilise votre position GPS pour la navigation."
+      },
+      "buildNumber": "2",
+      "config": {
+        "usesNonExemptEncryption": false
       }
     },
     "android": {
@@ -34,7 +42,11 @@
         "INTERNET",
         "ACCESS_NETWORK_STATE",
         "WRITE_EXTERNAL_STORAGE",
-        "READ_EXTERNAL_STORAGE"
+        "READ_EXTERNAL_STORAGE",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
       ]
     },
     "web": {
@@ -44,18 +56,24 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "L'application utilise la caméra pour scanner les QR codes."
+          "cameraPermission": "L'application utilise la cam\u00e9ra pour scanner les QR codes."
         }
       ],
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "L'application utilise votre GPS pour la navigation."
+          "locationAlwaysAndWhenInUsePermission": "L'application utilise votre GPS pour la navigation.",
+          "locationWhenInUsePermission": "L'application utilise votre GPS pour la navigation.",
+          "isIosBackgroundLocationEnabled": false
         }
-      ]
+      ],
+      "@maplibre/maplibre-react-native"
     ],
     "extra": {
-      "apiBaseUrl": "https://www.qrmap.site"
+      "apiBaseUrl": "https://www.qrmap.site",
+      "eas": {
+        "projectId": "80a74adb-d9d4-49ee-8fa0-683afd966822"
+      }
     }
   }
 }

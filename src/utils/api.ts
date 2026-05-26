@@ -20,27 +20,19 @@ export async function fetchItinerary(slug: string): Promise<Itinerary> {
 
 /**
  * Extrait le slug depuis une URL qrmap.site
- * Exemples :
- *   https://www.qrmap.site/map/cambodge-voyage-ugksix6w  → cambodge-voyage-ugksix6w
- *   https://www.qrmap.site/guide/cambodge-voyage-ugksix6w → cambodge-voyage-ugksix6w
- *   cambodge-voyage-ugksix6w (slug direct) → cambodge-voyage-ugksix6w
  */
 export function extractSlugFromUrl(input: string): string | null {
   try {
-    // Essayer de parser comme URL
     const url = new URL(input);
     const parts = url.pathname.split('/').filter(Boolean);
-    // /map/:slug ou /guide/:slug
     if (parts.length >= 2 && (parts[0] === 'map' || parts[0] === 'guide')) {
       return parts[1];
     }
-    // /api/itinerary/:slug
     if (parts.length >= 3 && parts[0] === 'api' && parts[1] === 'itinerary') {
       return parts[2];
     }
     return null;
   } catch {
-    // Pas une URL valide, peut-être un slug direct
     if (/^[a-z0-9-]+$/.test(input)) {
       return input;
     }
@@ -62,7 +54,6 @@ function normalizeItinerary(data: any): Itinerary {
       orderIndex: place.orderIndex || 0,
     }));
 
-    // Calculer la date du jour si startDate est disponible
     let date: string | undefined;
     if (data.startDate) {
       const start = new Date(data.startDate);
@@ -89,20 +80,92 @@ function normalizeItinerary(data: any): Itinerary {
   };
 }
 
+// ─── Types navigation guidée ──────────────────────────────────────────────────
+
+export interface NavStep {
+  instruction: string;       // texte humain de la manœuvre
+  distance: number;          // distance jusqu'à la prochaine manœuvre (m)
+  duration: number;          // durée (s)
+  maneuver: string;          // type OSRM : 'turn', 'depart', 'arrive', etc.
+  modifier?: string;         // 'left', 'right', 'straight', 'slight left', etc.
+  lat: number;               // coordonnée du point de manœuvre
+  lon: number;
+}
+
+export interface RouteData {
+  coordinates: [number, number][];  // [lat, lon] pour MapLibre
+  distance: number;
+  duration: number;
+  steps: NavStep[];
+}
+
 /**
- * Calcule l'itinéraire de navigation entre deux points via OSRM (gratuit, OpenStreetMap)
+ * Traduit une instruction OSRM en français
+ */
+function translateInstruction(maneuver: string, modifier?: string, streetName?: string): string {
+  const street = streetName && streetName !== '' ? ` sur ${streetName}` : '';
+
+  const modifierFr: Record<string, string> = {
+    'left': 'à gauche',
+    'right': 'à droite',
+    'slight left': 'légèrement à gauche',
+    'slight right': 'légèrement à droite',
+    'sharp left': 'fortement à gauche',
+    'sharp right': 'fortement à droite',
+    'straight': 'tout droit',
+    'uturn': 'demi-tour',
+  };
+
+  const mod = modifier ? modifierFr[modifier] || modifier : '';
+
+  switch (maneuver) {
+    case 'depart':
+      return `Départ${street}`;
+    case 'arrive':
+      return 'Vous êtes arrivé à destination';
+    case 'turn':
+      return `Tournez ${mod}${street}`;
+    case 'new name':
+      return `Continuez${street}`;
+    case 'continue':
+      return `Continuez tout droit${street}`;
+    case 'merge':
+      return `Rejoignez la voie${street}`;
+    case 'on ramp':
+      return `Prenez la bretelle${mod ? ` ${mod}` : ''}`;
+    case 'off ramp':
+      return `Quittez par la sortie${mod ? ` ${mod}` : ''}`;
+    case 'fork':
+      return `Prenez la bifurcation ${mod}${street}`;
+    case 'end of road':
+      return `Au bout de la route, tournez ${mod}${street}`;
+    case 'roundabout':
+    case 'rotary':
+      return `Au rond-point, prenez la sortie${street}`;
+    case 'roundabout turn':
+      return `Au rond-point, tournez ${mod}`;
+    case 'notification':
+      return `Continuez${street}`;
+    default:
+      return mod ? `Tournez ${mod}${street}` : `Continuez${street}`;
+  }
+}
+
+/**
+ * Calcule l'itinéraire de navigation entre deux points via OSRM
+ * Retourne les coordonnées + les étapes de navigation guidée
  */
 export async function fetchRoute(
   fromLat: number,
   fromLon: number,
   toLat: number,
   toLon: number
-): Promise<{ coordinates: [number, number][]; distance: number; duration: number }> {
-  const url = `https://router.project-osrm.org/route/v1/driving/${fromLon},${fromLat};${toLon},${toLat}?overview=full&geometries=geojson&steps=true`;
+): Promise<RouteData> {
+  const url = `https://router.project-osrm.org/route/v1/driving/${fromLon},${fromLat};${toLon},${toLat}?overview=full&geometries=geojson&steps=true&annotations=false`;
 
   const response = await fetch(url);
   if (!response.ok) {
-    throw new Error('Impossible de calculer l\'itinéraire');
+    throw new Error("Impossible de calculer l'itinéraire");
   }
 
   const data = await response.json();
@@ -111,14 +174,38 @@ export async function fetchRoute(
   }
 
   const route = data.routes[0];
+
+  // Coordonnées de la polyligne [lat, lon]
   const coordinates: [number, number][] = route.geometry.coordinates.map(
-    ([lon, lat]: [number, number]) => [lat, lon] // Convertir en [lat, lon] pour Leaflet/MapLibre
+    ([lon, lat]: [number, number]) => [lat, lon]
   );
+
+  // Extraire les étapes de navigation depuis les legs OSRM
+  const steps: NavStep[] = [];
+  for (const leg of route.legs || []) {
+    for (const step of leg.steps || []) {
+      const maneuver = step.maneuver?.type || 'continue';
+      const modifier = step.maneuver?.modifier;
+      const streetName = step.name || '';
+      const [lon, lat] = step.maneuver?.location || [toLon, toLat];
+
+      steps.push({
+        instruction: translateInstruction(maneuver, modifier, streetName),
+        distance: step.distance || 0,
+        duration: step.duration || 0,
+        maneuver,
+        modifier,
+        lat,
+        lon,
+      });
+    }
+  }
 
   return {
     coordinates,
     distance: route.distance,
     duration: route.duration,
+    steps,
   };
 }
 
