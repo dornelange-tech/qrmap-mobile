@@ -1,0 +1,42 @@
+# Dépendances
+node_modules/
+
+# Expo
+.expo/
+dist/
+web-build/
+
+# Build natif
+ios/build/
+ios/Pods/
+android/build/
+android/app/build/
+android/.gradle/
+
+# Fichiers système macOS
+.DS_Store
+*.DS_Store
+
+# Logs
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# Variables d'environnement locales
+.env
+.env.local
+.env.*.local
+
+# Fichiers de lock (optionnel - certains projets les commitent)
+# package-lock.json
+
+# Xcode
+*.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+DerivedData/
+*.ipa
+
+# Android
+*.apk
+*.aab
+local.properties
