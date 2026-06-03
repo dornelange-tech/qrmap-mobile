@@ -36,6 +36,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList, Itinerary, Place } from '../types';
 import { fetchItinerary, formatDateShort, formatDate } from '../utils/api';
 import { saveItinerary, getItineraryBySlug, saveOfflinePack, getOfflinePack } from '../utils/storage';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // ─── OBLIGATOIRE ─────────────────────────────────────────────────────────────
 MapLibreGL.setAccessToken(null);
@@ -298,8 +299,20 @@ export default function MapScreen() {
   const [dlProgress, setDlProgress] = useState<number | null>(null);
   const [dlStatus, setDlStatus] = useState<string>('');
 
-  // ── Tracé global inter-jours ────────────────────────────────────────────
+  // ── Tracé global inter-jours ───────────────────────────────────────
   const [showGlobalRoute, setShowGlobalRoute] = useState(false);
+
+  // Charger la préférence persistante au montage
+  useEffect(() => {
+    AsyncStorage.getItem('showGlobalRoute').then(v => {
+      if (v === '1') setShowGlobalRoute(true);
+    });
+  }, []);
+
+  // Sauvegarder la préférence à chaque changement
+  useEffect(() => {
+    AsyncStorage.setItem('showGlobalRoute', showGlobalRoute ? '1' : '0');
+  }, [showGlobalRoute]);
 
   // ── Navigation GPS ────────────────────────────────────────────────────────
   const [navRoute, setNavRoute] = useState<RouteData | null>(null);
@@ -886,7 +899,7 @@ export default function MapScreen() {
                 selectedDay === day.dayNumber && { backgroundColor: DAY_COLORS[(day.dayNumber - 1) % DAY_COLORS.length] },
                 day.date && { paddingVertical: 5 },
               ]}
-              onPress={() => setSelectedDay(selectedDay === day.dayNumber ? null : day.dayNumber)}
+              onPress={() => { const next = selectedDay === day.dayNumber ? null : day.dayNumber; setSelectedDay(next); if (next !== null) setShowGlobalRoute(false); }}
             >
               <Text style={[s.dayChipText, selectedDay === day.dayNumber && s.dayChipTextActive]}>
                 J{day.dayNumber}
