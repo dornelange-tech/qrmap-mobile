@@ -28,7 +28,7 @@ import {
   Platform,
   Vibration,
 } from 'react-native';
-import MapLibreGL from '@maplibre/maplibre-react-native';
+import MapLibreGL, { MapViewRef } from '@maplibre/maplibre-react-native';
 import * as Location from 'expo-location';
 import * as FileSystem from 'expo-file-system';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
@@ -273,7 +273,7 @@ export default function MapScreen() {
   const { slug, itinerary: initialItinerary } = route.params;
 
   const cameraRef = useRef<MapLibreGL.CameraRef>(null);
-  const mapViewRef = useRef<MapLibreGL.MapView>(null);
+  const mapViewRef = useRef<MapViewRef>(null);
   const mapReadyRef = useRef(false);
   const lastRecalcRef = useRef(0);
   const lastStepRef = useRef(-1);
@@ -297,6 +297,9 @@ export default function MapScreen() {
   const [isOfflineReady, setIsOfflineReady] = useState(false);
   const [dlProgress, setDlProgress] = useState<number | null>(null);
   const [dlStatus, setDlStatus] = useState<string>('');
+
+  // ── Tracé global inter-jours ────────────────────────────────────────────
+  const [showGlobalRoute, setShowGlobalRoute] = useState(false);
 
   // ── Navigation GPS ────────────────────────────────────────────────────────
   const [navRoute, setNavRoute] = useState<RouteData | null>(null);
@@ -546,6 +549,79 @@ export default function MapScreen() {
     );
   };
 
+  // ── GeoJSON tracé global inter-jours ────────────────────────────────────
+  const globalRouteGeoJSON = useMemo(() => {
+    if (!showGlobalRoute || !itinerary) return null;
+    const sortedDays = [...itinerary.days].sort((a, b) => a.dayNumber - b.dayNumber);
+    // Construire les segments avec propriété "interDay" pour différencier le style
+    const features: any[] = [];
+    for (let di = 0; di < sortedDays.length; di++) {
+      const day = sortedDays[di];
+      const places = day.places.filter(p => p.lat && p.lon && !isNaN(p.lat) && !isNaN(p.lon));
+      // Segments intra-jour (couleur du jour)
+      for (let i = 0; i < places.length - 1; i++) {
+        features.push({
+          type: 'Feature',
+          geometry: {
+            type: 'LineString',
+            coordinates: [
+              [places[i].lon, places[i].lat],
+              [places[i + 1].lon, places[i + 1].lat],
+            ],
+          },
+          properties: {
+            interDay: false,
+            color: DAY_COLORS[(day.dayNumber - 1) % DAY_COLORS.length],
+          },
+        });
+      }
+      // Segment inter-jour (dernier point du jour → premier point du jour suivant)
+      if (di < sortedDays.length - 1) {
+        const nextDay = sortedDays[di + 1];
+        const nextPlaces = nextDay.places.filter(p => p.lat && p.lon && !isNaN(p.lat) && !isNaN(p.lon));
+        if (places.length > 0 && nextPlaces.length > 0) {
+          const last = places[places.length - 1];
+          const first = nextPlaces[0];
+          features.push({
+            type: 'Feature',
+            geometry: {
+              type: 'LineString',
+              coordinates: [
+                [last.lon, last.lat],
+                [first.lon, first.lat],
+              ],
+            },
+            properties: {
+              interDay: true,
+              color: '#ffffff',
+              label: `J${day.dayNumber} → J${nextDay.dayNumber}`,
+            },
+          });
+        }
+      }
+    }
+    if (!features.length) return null;
+    return { type: 'FeatureCollection', features };
+  }, [showGlobalRoute, itinerary]);
+
+  // GeoJSON filtré : intra-jour uniquement
+  const globalRouteIntraDayGeoJSON = useMemo(() => {
+    if (!globalRouteGeoJSON) return null;
+    return {
+      ...globalRouteGeoJSON,
+      features: globalRouteGeoJSON.features.filter((f: any) => !f.properties.interDay),
+    };
+  }, [globalRouteGeoJSON]);
+
+  // GeoJSON filtré : inter-jours uniquement
+  const globalRouteInterDayGeoJSON = useMemo(() => {
+    if (!globalRouteGeoJSON) return null;
+    return {
+      ...globalRouteGeoJSON,
+      features: globalRouteGeoJSON.features.filter((f: any) => f.properties.interDay),
+    };
+  }, [globalRouteGeoJSON]);
+
   // ── GeoJSON route ─────────────────────────────────────────────────────────
   const routeGeoJSON = useMemo(() => {
     if (!navRoute) return null;
@@ -705,6 +781,34 @@ export default function MapScreen() {
             <MapLibreGL.LineLayer
               id="route-line"
               style={{ lineColor: '#2980b9', lineWidth: 5, lineOpacity: 0.95, lineCap: 'round', lineJoin: 'round' }}
+            />
+          </MapLibreGL.ShapeSource>
+        )}
+
+        {/* Tracé global inter-jours — segments intra-jour (couleurs) */}
+        {globalRouteIntraDayGeoJSON && (
+          <MapLibreGL.ShapeSource id="global-intraday-src" shape={globalRouteIntraDayGeoJSON as any}>
+            <MapLibreGL.LineLayer
+              id="global-intraday-shadow"
+              style={{ lineColor: '#000', lineWidth: 8, lineOpacity: 0.18, lineCap: 'round', lineJoin: 'round' }}
+            />
+            <MapLibreGL.LineLayer
+              id="global-intraday-line"
+              style={{ lineColor: ['get', 'color'], lineWidth: 5, lineOpacity: 0.9, lineCap: 'round', lineJoin: 'round' }}
+            />
+          </MapLibreGL.ShapeSource>
+        )}
+
+        {/* Tracé global inter-jours — segments inter-jours (pointillés blancs) */}
+        {globalRouteInterDayGeoJSON && (
+          <MapLibreGL.ShapeSource id="global-interday-src" shape={globalRouteInterDayGeoJSON as any}>
+            <MapLibreGL.LineLayer
+              id="global-interday-shadow"
+              style={{ lineColor: '#000', lineWidth: 6, lineOpacity: 0.15, lineCap: 'round', lineDasharray: [2, 3] }}
+            />
+            <MapLibreGL.LineLayer
+              id="global-interday-line"
+              style={{ lineColor: '#ffffff', lineWidth: 3, lineOpacity: 0.85, lineCap: 'round', lineDasharray: [2, 3] }}
             />
           </MapLibreGL.ShapeSource>
         )}
@@ -971,6 +1075,15 @@ export default function MapScreen() {
           <TouchableOpacity style={s.listBtn} onPress={() => setShowList(!showList)}>
             <Text style={s.listBtnText}>{showList ? '✕' : '☰ Lieux'}</Text>
           </TouchableOpacity>
+          {/* Bouton Tracé global */}
+          <TouchableOpacity
+            style={[s.globalRouteBtn, showGlobalRoute && s.globalRouteBtnActive]}
+            onPress={() => setShowGlobalRoute(v => !v)}
+          >
+            <Text style={[s.globalRouteBtnText, showGlobalRoute && s.globalRouteBtnTextActive]}>
+              {showGlobalRoute ? '✖ Tracé' : '🗺 Tracé global'}
+            </Text>
+          </TouchableOpacity>
           <TouchableOpacity style={s.centerBtn} onPress={fitBounds}>
             <Text style={s.centerBtnText}>⊙</Text>
           </TouchableOpacity>
@@ -1135,12 +1248,24 @@ const s = StyleSheet.create({
   listItemArrow: { color: '#555', fontSize: 20 },
 
   listBtn: {
-    position: 'absolute', bottom: 20, left: 16,
+    position: 'absolute', bottom: 70, left: 16,
     backgroundColor: 'rgba(10,10,25,0.92)',
     paddingHorizontal: 16, paddingVertical: 10,
     borderRadius: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
   },
   listBtnText: { color: '#fff', fontSize: 13, fontWeight: '600' },
+  globalRouteBtn: {
+    position: 'absolute', bottom: 20, left: 16,
+    backgroundColor: 'rgba(10,10,25,0.92)',
+    paddingHorizontal: 16, paddingVertical: 10,
+    borderRadius: 20, borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.2)',
+  },
+  globalRouteBtnActive: {
+    backgroundColor: '#27797d',
+    borderColor: '#27797d',
+  },
+  globalRouteBtnText: { color: '#fff', fontSize: 13, fontWeight: '600' },
+  globalRouteBtnTextActive: { color: '#fff' },
   centerBtn: {
     position: 'absolute', bottom: 20, right: 16,
     width: 44, height: 44, borderRadius: 22,
