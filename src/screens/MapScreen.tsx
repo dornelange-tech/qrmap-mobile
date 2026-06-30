@@ -27,6 +27,8 @@ import {
   ActivityIndicator,
   Platform,
   Vibration,
+  TextInput,
+  Keyboard,
 } from 'react-native';
 import MapLibreGL, { MapViewRef } from '@maplibre/maplibre-react-native';
 import * as Location from 'expo-location';
@@ -57,6 +59,22 @@ const DAY_COLORS = [
 ];
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+type TransportMode = 'foot' | 'bike' | 'car';
+
+const TRANSPORT_MODES: { key: TransportMode; label: string; icon: string; osrmProfile: string }[] = [
+  { key: 'foot',  label: 'À pied',  icon: '🚶', osrmProfile: 'foot'    },
+  { key: 'bike',  label: 'Vélo',    icon: '🚴', osrmProfile: 'bike'    },
+  { key: 'car',   label: 'Voiture', icon: '🚗', osrmProfile: 'driving' },
+];
+
+interface RouteAlternative {
+  route: RouteData;
+  color: string;
+  label: string;
+}
+
+const ALT_COLORS = ['#2980b9', '#e67e22', '#27ae60'];
+
 interface NativePOI {
   name: string;
   lat: number;
@@ -179,53 +197,71 @@ async function fetchWithTimeout(url: string, ms: number): Promise<Response> {
   }
 }
 
-async function computeRoute(
+function parseOsrmRoute(rawRoute: any): RouteData {
+  const coordinates: [number, number][] = rawRoute.geometry.coordinates.map(
+    ([lon, lat]: [number, number]) => [lat, lon]
+  );
+  const steps: NavStep[] = [];
+  for (const leg of rawRoute.legs || []) {
+    for (const step of leg.steps || []) {
+      const [sLon, sLat] = step.maneuver?.location || [0, 0];
+      const maneuver = step.maneuver?.type || 'continue';
+      const modifier = step.maneuver?.modifier;
+      const road = step.name ? ` sur ${step.name}` : '';
+      let instruction = `Continuez${road}`;
+      if (maneuver === 'turn' && modifier === 'left') instruction = `Tournez à gauche${road}`;
+      else if (maneuver === 'turn' && modifier === 'right') instruction = `Tournez à droite${road}`;
+      else if (maneuver === 'turn' && modifier === 'slight left') instruction = `Légèrement à gauche${road}`;
+      else if (maneuver === 'turn' && modifier === 'slight right') instruction = `Légèrement à droite${road}`;
+      else if (maneuver === 'turn' && modifier === 'sharp left') instruction = `Virage serré à gauche${road}`;
+      else if (maneuver === 'turn' && modifier === 'sharp right') instruction = `Virage serré à droite${road}`;
+      else if (maneuver === 'turn' && modifier === 'uturn') instruction = `Demi-tour${road}`;
+      else if (maneuver === 'roundabout') instruction = `Prenez le rond-point${road}`;
+      else if (maneuver === 'arrive') instruction = step.name ? `Arrivée à ${step.name}` : 'Vous êtes arrivé';
+      else if (maneuver === 'depart') instruction = `Départ${road}`;
+      steps.push({ lat: sLat, lon: sLon, instruction, maneuver, modifier, distance: step.distance || 0 });
+    }
+  }
+  return { coordinates, distance: rawRoute.distance, duration: rawRoute.duration, steps };
+}
+
+async function computeRouteWithAlternatives(
   fromLat: number, fromLon: number,
-  toLat: number, toLon: number
-): Promise<RouteData | null> {
-  const OSRM_SERVERS = [
-    'https://router.project-osrm.org',
-    'https://routing.openstreetmap.de/routed-car',
-  ];
-  for (const server of OSRM_SERVERS) {
+  toLat: number, toLon: number,
+  profile: string = 'driving'
+): Promise<RouteAlternative[] | null> {
+  const OSRM_SERVERS: Record<string, string[]> = {
+    driving: ['https://router.project-osrm.org', 'https://routing.openstreetmap.de/routed-car'],
+    foot:    ['https://routing.openstreetmap.de/routed-foot', 'https://router.project-osrm.org'],
+    bike:    ['https://routing.openstreetmap.de/routed-bike', 'https://router.project-osrm.org'],
+  };
+  const servers = OSRM_SERVERS[profile] || OSRM_SERVERS.driving;
+  for (const server of servers) {
     try {
-      const url = `${server}/route/v1/driving/${fromLon},${fromLat};${toLon},${toLat}?overview=full&geometries=geojson&steps=true`;
-      const res = await fetchWithTimeout(url, 12000);
+      const url = `${server}/route/v1/${profile}/${fromLon},${fromLat};${toLon},${toLat}?overview=full&geometries=geojson&steps=true&alternatives=true`;
+      const res = await fetchWithTimeout(url, 14000);
       if (!res.ok) continue;
       const data = await res.json();
       if (!data.routes?.length) continue;
-    const route = data.routes[0];
-    const coordinates: [number, number][] = route.geometry.coordinates.map(
-      ([lon, lat]: [number, number]) => [lat, lon]
-    );
-    const steps: NavStep[] = [];
-    for (const leg of route.legs || []) {
-      for (const step of leg.steps || []) {
-        const [sLon, sLat] = step.maneuver?.location || [0, 0];
-        const maneuver = step.maneuver?.type || 'continue';
-        const modifier = step.maneuver?.modifier;
-        const road = step.name ? ` sur ${step.name}` : '';
-        let instruction = `Continuez${road}`;
-        if (maneuver === 'turn' && modifier === 'left') instruction = `Tournez à gauche${road}`;
-        else if (maneuver === 'turn' && modifier === 'right') instruction = `Tournez à droite${road}`;
-        else if (maneuver === 'turn' && modifier === 'slight left') instruction = `Légèrement à gauche${road}`;
-        else if (maneuver === 'turn' && modifier === 'slight right') instruction = `Légèrement à droite${road}`;
-        else if (maneuver === 'turn' && modifier === 'sharp left') instruction = `Virage serré à gauche${road}`;
-        else if (maneuver === 'turn' && modifier === 'sharp right') instruction = `Virage serré à droite${road}`;
-        else if (maneuver === 'turn' && modifier === 'uturn') instruction = `Demi-tour${road}`;
-        else if (maneuver === 'roundabout') instruction = `Prenez le rond-point${road}`;
-        else if (maneuver === 'arrive') instruction = step.name ? `Arrivée à ${step.name}` : 'Vous êtes arrivé';
-        else if (maneuver === 'depart') instruction = `Départ${road}`;
-        steps.push({ lat: sLat, lon: sLon, instruction, maneuver, modifier, distance: step.distance || 0 });
-      }
-    }
-      return { coordinates, distance: route.distance, duration: route.duration, steps };
+      return data.routes.slice(0, 3).map((r: any, i: number) => ({
+        route: parseOsrmRoute(r),
+        color: ALT_COLORS[i] || ALT_COLORS[0],
+        label: i === 0 ? 'Route principale' : `Alternative ${i}`,
+      }));
     } catch {
-      // Essayer le serveur suivant
       continue;
     }
   }
   return null;
+}
+
+async function computeRoute(
+  fromLat: number, fromLon: number,
+  toLat: number, toLon: number,
+  profile: string = 'driving'
+): Promise<RouteData | null> {
+  const alts = await computeRouteWithAlternatives(fromLat, fromLon, toLat, toLon, profile);
+  return alts?.[0]?.route ?? null;
 }
 
 // ─── Calcul tuiles offline ────────────────────────────────────────────────────
@@ -322,6 +358,16 @@ export default function MapScreen() {
   const [distToStep, setDistToStep] = useState<number | null>(null);
   const [remainDist, setRemainDist] = useState<number | null>(null);
   const [isCalcRoute, setIsCalcRoute] = useState(false);
+
+  // ── Mode transport + alternatives + recherche adresse ────────────────────
+  const [transportMode, setTransportMode] = useState<TransportMode>('car');
+  const [routeAlternatives, setRouteAlternatives] = useState<RouteAlternative[]>([]);
+  const [selectedAltIdx, setSelectedAltIdx] = useState(0);
+  const [showGpsPanel, setShowGpsPanel] = useState(false);
+  const [addressQuery, setAddressQuery] = useState('');
+  const [addressSuggestions, setAddressSuggestions] = useState<{ name: string; lat: number; lon: number }[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const addressSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Chargement itinéraire ─────────────────────────────────────────────────
   useEffect(() => {
@@ -465,15 +511,19 @@ export default function MapScreen() {
   }, [itinerary, selectedDay]);
 
   // ── Navigation GPS ────────────────────────────────────────────────────────
-  const startNav = async (dest: { lat: number; lon: number; name: string }) => {
+  const startNav = async (dest: { lat: number; lon: number; name: string }, mode?: TransportMode) => {
     if (!userLoc) { Alert.alert('GPS requis', 'Activez la localisation pour naviguer.'); return; }
+    const profile = TRANSPORT_MODES.find(m => m.key === (mode || transportMode))?.osrmProfile || 'driving';
     setIsCalcRoute(true);
     setSelectedPlace(null);
     setSelectedNativePOI(null);
+    setShowGpsPanel(false);
     try {
-      const r = await computeRoute(userLoc.lat, userLoc.lon, dest.lat, dest.lon);
-      if (!r) throw new Error();
-      setNavRoute(r);
+      const alts = await computeRouteWithAlternatives(userLoc.lat, userLoc.lon, dest.lat, dest.lon, profile);
+      if (!alts?.length) throw new Error();
+      setRouteAlternatives(alts);
+      setSelectedAltIdx(0);
+      setNavRoute(alts[0].route);
       setNavTarget(dest);
       setStepIdx(0);
       setIsNavigating(true);
@@ -485,6 +535,33 @@ export default function MapScreen() {
     }
   };
 
+  const selectAlternative = (idx: number) => {
+    if (idx < 0 || idx >= routeAlternatives.length) return;
+    setSelectedAltIdx(idx);
+    setNavRoute(routeAlternatives[idx].route);
+    setStepIdx(0);
+    lastStepRef.current = -1;
+  };
+
+  const searchAddress = async (query: string) => {
+    if (query.trim().length < 3) { setAddressSuggestions([]); return; }
+    setIsSearching(true);
+    try {
+      const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=5&addressdetails=0`;
+      const res = await fetchWithTimeout(url, 8000);
+      const data = await res.json();
+      setAddressSuggestions(data.map((r: any) => ({
+        name: r.display_name,
+        lat: parseFloat(r.lat),
+        lon: parseFloat(r.lon),
+      })));
+    } catch {
+      setAddressSuggestions([]);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
   const stopNav = () => {
     setIsNavigating(false);
     setNavRoute(null);
@@ -492,6 +569,8 @@ export default function MapScreen() {
     setStepIdx(0);
     setDistToStep(null);
     setRemainDist(null);
+    setRouteAlternatives([]);
+    setSelectedAltIdx(0);
     if (mapReadyRef.current) setTimeout(fitBounds, 300);
   };
 
@@ -635,7 +714,7 @@ export default function MapScreen() {
     };
   }, [globalRouteGeoJSON]);
 
-  // ── GeoJSON route ─────────────────────────────────────────────────────────
+  // ── GeoJSON route (alternatives) ─────────────────────────────────────────
   const routeGeoJSON = useMemo(() => {
     if (!navRoute) return null;
     return {
@@ -644,9 +723,26 @@ export default function MapScreen() {
         type: 'LineString',
         coordinates: navRoute.coordinates.map(([lat, lon]) => [lon, lat]),
       },
-      properties: {},
+      properties: { color: routeAlternatives[selectedAltIdx]?.color || '#2980b9' },
     };
-  }, [navRoute]);
+  }, [navRoute, routeAlternatives, selectedAltIdx]);
+
+  const altRoutesGeoJSON = useMemo(() => {
+    if (routeAlternatives.length <= 1) return null;
+    return {
+      type: 'FeatureCollection',
+      features: routeAlternatives
+        .filter((_, i) => i !== selectedAltIdx)
+        .map((alt) => ({
+          type: 'Feature',
+          geometry: {
+            type: 'LineString',
+            coordinates: alt.route.coordinates.map(([lat, lon]) => [lon, lat]),
+          },
+          properties: { color: alt.color },
+        })),
+    };
+  }, [routeAlternatives, selectedAltIdx]);
 
   // ── Marqueurs filtrés ─────────────────────────────────────────────────────
   const markers = useMemo(() => {
@@ -784,7 +880,17 @@ export default function MapScreen() {
         <MapLibreGL.Camera ref={cameraRef} />
         <MapLibreGL.UserLocation visible={true} showsUserHeadingIndicator={true} />
 
-        {/* Ligne de navigation */}
+        {/* Routes alternatives (grises, en dessous) */}
+        {altRoutesGeoJSON && (
+          <MapLibreGL.ShapeSource id="alt-routes-src" shape={altRoutesGeoJSON as any}>
+            <MapLibreGL.LineLayer
+              id="alt-routes-line"
+              style={{ lineColor: ['get', 'color'], lineWidth: 4, lineOpacity: 0.45, lineCap: 'round', lineJoin: 'round' }}
+            />
+          </MapLibreGL.ShapeSource>
+        )}
+
+        {/* Ligne de navigation principale */}
         {routeGeoJSON && (
           <MapLibreGL.ShapeSource id="route-src" shape={routeGeoJSON as any}>
             <MapLibreGL.LineLayer
@@ -793,7 +899,7 @@ export default function MapScreen() {
             />
             <MapLibreGL.LineLayer
               id="route-line"
-              style={{ lineColor: '#2980b9', lineWidth: 5, lineOpacity: 0.95, lineCap: 'round', lineJoin: 'round' }}
+              style={{ lineColor: ['get', 'color'], lineWidth: 5, lineOpacity: 0.95, lineCap: 'round', lineJoin: 'round' }}
             />
           </MapLibreGL.ShapeSource>
         )}
@@ -1082,6 +1188,102 @@ export default function MapScreen() {
         </View>
       )}
 
+      {/* ═══ PANNEAU GPS ═══ */}
+      {showGpsPanel && !isNavigating && (
+        <View style={s.gpsPanel}>
+          <View style={s.gpsPanelHeader}>
+            <Text style={s.gpsPanelTitle}>🧭 Navigation GPS</Text>
+            <TouchableOpacity onPress={() => { setShowGpsPanel(false); setAddressSuggestions([]); }}>
+              <Text style={s.gpsPanelClose}>✕</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Modes de transport */}
+          <View style={s.transportRow}>
+            {TRANSPORT_MODES.map(mode => (
+              <TouchableOpacity
+                key={mode.key}
+                style={[s.transportBtn, transportMode === mode.key && s.transportBtnActive]}
+                onPress={() => setTransportMode(mode.key)}
+              >
+                <Text style={s.transportIcon}>{mode.icon}</Text>
+                <Text style={[s.transportLabel, transportMode === mode.key && s.transportLabelActive]}>
+                  {mode.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {/* Recherche d'adresse */}
+          <View style={s.searchRow}>
+            <TextInput
+              style={s.searchInput}
+              placeholder="Rechercher une adresse..."
+              placeholderTextColor="#888"
+              value={addressQuery}
+              onChangeText={(text) => {
+                setAddressQuery(text);
+                if (addressSearchTimer.current) clearTimeout(addressSearchTimer.current);
+                addressSearchTimer.current = setTimeout(() => searchAddress(text), 500);
+              }}
+              returnKeyType="search"
+              onSubmitEditing={() => searchAddress(addressQuery)}
+            />
+            {isSearching && <ActivityIndicator size="small" color="#2980b9" style={{ marginLeft: 8 }} />}
+          </View>
+
+          {/* Suggestions */}
+          {addressSuggestions.length > 0 && (
+            <ScrollView style={s.suggestionsList} keyboardShouldPersistTaps="handled">
+              {addressSuggestions.map((sug, i) => (
+                <TouchableOpacity
+                  key={i}
+                  style={s.suggestionItem}
+                  onPress={() => {
+                    Keyboard.dismiss();
+                    setAddressQuery(sug.name.split(',')[0]);
+                    setAddressSuggestions([]);
+                    if (cameraRef.current && mapReadyRef.current) {
+                      cameraRef.current.setCamera({
+                        centerCoordinate: [sug.lon, sug.lat],
+                        zoomLevel: 15,
+                        animationDuration: 800,
+                      });
+                    }
+                    startNav({ lat: sug.lat, lon: sug.lon, name: sug.name.split(',')[0] });
+                  }}
+                >
+                  <Text style={s.suggestionText} numberOfLines={2}>{sug.name}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          )}
+
+          {addressSuggestions.length === 0 && addressQuery.trim().length === 0 && !userLoc && (
+            <Text style={s.gpsHint}>📍 Activez la localisation pour naviguer vers un lieu</Text>
+          )}
+        </View>
+      )}
+
+      {/* ═══ SÉLECTEUR D'ALTERNATIVES (pendant navigation) ═══ */}
+      {isNavigating && routeAlternatives.length > 1 && (
+        <View style={s.altSelector}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            {routeAlternatives.map((alt, i) => (
+              <TouchableOpacity
+                key={i}
+                style={[s.altBtn, i === selectedAltIdx && { backgroundColor: alt.color, borderColor: alt.color }]}
+                onPress={() => selectAlternative(i)}
+              >
+                <View style={[s.altDot, { backgroundColor: alt.color }]} />
+                <Text style={s.altLabel}>{alt.label}</Text>
+                <Text style={s.altInfo}>{fmtDist(alt.route.distance)}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      )}
+
       {/* ═══ BOUTONS FLOTTANTS ═══ */}
       {!isNavigating && (
         <>
@@ -1096,6 +1298,13 @@ export default function MapScreen() {
             <Text style={[s.globalRouteBtnText, showGlobalRoute && s.globalRouteBtnTextActive]}>
               {showGlobalRoute ? '✖ Tracé' : '🗺 Tracé global'}
             </Text>
+          </TouchableOpacity>
+          {/* Bouton GPS */}
+          <TouchableOpacity
+            style={[s.gpsBtn, showGpsPanel && s.gpsBtnActive]}
+            onPress={() => { setShowGpsPanel(v => !v); setShowList(false); }}
+          >
+            <Text style={s.gpsBtnText}>🧭</Text>
           </TouchableOpacity>
           <TouchableOpacity style={s.centerBtn} onPress={fitBounds}>
             <Text style={s.centerBtnText}>⊙</Text>
@@ -1287,4 +1496,74 @@ const s = StyleSheet.create({
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
   },
   centerBtnText: { color: '#fff', fontSize: 20 },
+
+  // ── Bouton GPS ──────────────────────────────────────────────────────────
+  gpsBtn: {
+    position: 'absolute', bottom: 70, right: 16,
+    width: 44, height: 44, borderRadius: 22,
+    backgroundColor: 'rgba(10,10,25,0.92)',
+    justifyContent: 'center', alignItems: 'center',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
+  },
+  gpsBtnActive: { backgroundColor: '#2980b9', borderColor: '#2980b9' },
+  gpsBtnText: { fontSize: 20 },
+
+  // ── Panneau GPS ─────────────────────────────────────────────────────────
+  gpsPanel: {
+    position: 'absolute', bottom: 120, left: 12, right: 12,
+    backgroundColor: 'rgba(10,10,25,0.97)',
+    borderRadius: 16, padding: 14,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)',
+    shadowColor: '#000', shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.4, shadowRadius: 8, elevation: 20, zIndex: 200,
+  },
+  gpsPanelHeader: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    marginBottom: 12,
+  },
+  gpsPanelTitle: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  gpsPanelClose: { color: '#888', fontSize: 18, padding: 4 },
+
+  // ── Modes de transport ──────────────────────────────────────────────────
+  transportRow: { flexDirection: 'row', gap: 8, marginBottom: 12 },
+  transportBtn: {
+    flex: 1, alignItems: 'center', paddingVertical: 10,
+    borderRadius: 12, borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.15)',
+    backgroundColor: 'rgba(255,255,255,0.05)',
+  },
+  transportBtnActive: { backgroundColor: '#2980b9', borderColor: '#2980b9' },
+  transportIcon: { fontSize: 22, marginBottom: 2 },
+  transportLabel: { color: '#aaa', fontSize: 11, fontWeight: '600' },
+  transportLabelActive: { color: '#fff' },
+
+  // ── Recherche adresse ───────────────────────────────────────────────────
+  searchRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
+  searchInput: {
+    flex: 1, backgroundColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10,
+    color: '#fff', fontSize: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
+  },
+  suggestionsList: { maxHeight: 180, marginBottom: 4 },
+  suggestionItem: {
+    paddingVertical: 10, paddingHorizontal: 4,
+    borderBottomWidth: 1, borderColor: 'rgba(255,255,255,0.07)',
+  },
+  suggestionText: { color: '#ddd', fontSize: 13 },
+  gpsHint: { color: '#666', fontSize: 12, textAlign: 'center', marginTop: 4 },
+
+  // ── Alternatives ────────────────────────────────────────────────────────
+  altSelector: {
+    position: 'absolute', bottom: 80, left: 0, right: 0,
+    paddingHorizontal: 12, paddingVertical: 8,
+    backgroundColor: 'rgba(10,10,25,0.9)',
+  },
+  altBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: 14, paddingVertical: 8,
+    borderRadius: 20, borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.2)',
+    backgroundColor: 'rgba(255,255,255,0.06)', marginRight: 8,
+  },
+  altDot: { width: 10, height: 10, borderRadius: 5 },
+  altLabel: { color: '#fff', fontSize: 12, fontWeight: '600' },
+  altInfo: { color: '#aaa', fontSize: 11 },
 });
