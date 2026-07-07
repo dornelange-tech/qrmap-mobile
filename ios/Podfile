@@ -61,6 +61,14 @@ target 'QRMapVoyage' do
           config.build_settings['CODE_SIGNING_ALLOWED'] = 'NO'
         end
       end
+    # Fix fmt consteval error with Xcode 26.4+ (C++20 tightened)
+    installer.pods_project.targets.each do |target|
+      if target.name == 'fmt'
+        target.build_configurations.each do |config|
+          config.build_settings['CLANG_CXX_LANGUAGE_STANDARD'] = 'c++17'
+        end
+      end
+    end
     end
 
     # Fix fmt consteval error with Xcode 15+
