@@ -5,7 +5,7 @@ PODS:
     - ExpoModulesCore
   - Expo (52.0.49):
     - ExpoModulesCore
-  - ExpoAsset (55.0.17):
+  - ExpoAsset (11.0.5):
     - ExpoModulesCore
   - ExpoCamera (16.0.18):
     - ExpoModulesCore
@@ -1926,7 +1926,7 @@ SPEC CHECKSUMS:
   DoubleConversion: f16ae600a246532c4020132d54af21d0ddb2a385
   EXConstants: fcfc75800824ac2d5c592b5bc74130bad17b146b
   Expo: 4bb70893882e6382b41d1e910d7226c6a1b85f0a
-  ExpoAsset: 7721c5c4ae2a7c3c8147a046727ac6c020b05648
+  ExpoAsset: 48386d40d53a8c1738929b3ed509bcad595b5516
   ExpoCamera: 0a3e78de7b1ca8c438ee6784fa6f22c5b1b36966
   ExpoFileSystem: 42d363d3b96f9afab980dcef60d5657a4443c655
   ExpoLocation: de58a60756fad907139ec422ccabb1ba734e080d
