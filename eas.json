@@ -22,7 +22,8 @@
     },
     "production": {
       "ios": {
-        "image": "latest"
+        "image": "latest",
+        "prebuildCommand": "cd ios && pod install && sed -i \"\" \"s/#  define FMT_USE_CONSTEVAL 1/#  define FMT_USE_CONSTEVAL 0/g\" Pods/fmt/include/fmt/base.h"
       },
       "android": {
         "buildType": "app-bundle"
