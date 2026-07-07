@@ -2,7 +2,7 @@
   "expo": {
     "name": "QRMap Voyage",
     "slug": "qrmap-voyage",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
@@ -19,8 +19,8 @@
       "bundleIdentifier": "com.qrmap.voyage",
       "deploymentTarget": "15.1",
       "infoPlist": {
-        "NSCameraUsageDescription": "L'application utilise la cam\u00e9ra pour scanner les QR codes des itin\u00e9raires.",
-        "NSLocationWhenInUseUsageDescription": "L'application utilise votre position GPS pour vous guider vers les lieux de votre itin\u00e9raire.",
+        "NSCameraUsageDescription": "L'application utilise la caméra pour scanner les QR codes des itinéraires.",
+        "NSLocationWhenInUseUsageDescription": "L'application utilise votre position GPS pour vous guider vers les lieux de votre itinéraire.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "L'application utilise votre position GPS pour la navigation.",
         "NSLocationAlwaysUsageDescription": "L'application utilise votre position GPS pour la navigation."
       },
@@ -56,7 +56,7 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "L'application utilise la cam\u00e9ra pour scanner les QR codes."
+          "cameraPermission": "L'application utilise la caméra pour scanner les QR codes."
         }
       ],
       [
