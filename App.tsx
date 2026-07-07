@@ -10,6 +10,7 @@ import { RootStackParamList } from './src/types';
 import HomeScreen from './src/screens/HomeScreen';
 import ScannerScreen from './src/screens/ScannerScreen';
 import MapScreen from './src/screens/MapScreen';
+import NavigationScreen from './src/screens/NavigationScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -34,6 +35,11 @@ export default function App() {
               options={{ animation: 'slide_from_bottom' }}
             />
             <Stack.Screen name="Map" component={MapScreen} />
+            <Stack.Screen
+              name="Navigation"
+              component={NavigationScreen}
+              options={{ animation: 'slide_from_bottom' }}
+            />
           </Stack.Navigator>
         </NavigationContainer>
       </SafeAreaProvider>

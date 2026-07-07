@@ -1299,10 +1299,10 @@ export default function MapScreen() {
               {showGlobalRoute ? '✖ Tracé' : '🗺 Tracé global'}
             </Text>
           </TouchableOpacity>
-          {/* Bouton GPS */}
+          {/* Bouton Navigation GPS → NavigationScreen */}
           <TouchableOpacity
-            style={[s.gpsBtn, showGpsPanel && s.gpsBtnActive]}
-            onPress={() => { setShowGpsPanel(v => !v); setShowList(false); }}
+            style={s.gpsBtn}
+            onPress={() => (navigation as any).navigate('Navigation')}
           >
             <Text style={s.gpsBtnText}>🧭</Text>
           </TouchableOpacity>
