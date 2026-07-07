@@ -24,7 +24,7 @@
         "NSLocationAlwaysAndWhenInUseUsageDescription": "L'application utilise votre position GPS pour la navigation.",
         "NSLocationAlwaysUsageDescription": "L'application utilise votre position GPS pour la navigation."
       },
-      "buildNumber": "2",
+      "buildNumber": "3",
       "config": {
         "usesNonExemptEncryption": false
       }
