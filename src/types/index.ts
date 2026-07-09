@@ -43,6 +43,6 @@ export type RootStackParamList = {
   Scanner: undefined;
   Map: { slug: string; itinerary?: Itinerary };
   DayDetail: { day: Day; itinerary: Itinerary };
-  Navigation: { destination: Place; itinerary: Itinerary };
+  Navigation: undefined;
   OfflineManager: undefined;
 };

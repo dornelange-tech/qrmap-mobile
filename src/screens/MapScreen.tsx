@@ -1302,7 +1302,7 @@ export default function MapScreen() {
           {/* Bouton Navigation GPS → NavigationScreen */}
           <TouchableOpacity
             style={s.gpsBtn}
-            onPress={() => (navigation as any).navigate('Navigation')}
+            onPress={() => navigation.navigate('Navigation')}
           >
             <Text style={s.gpsBtnText}>🧭</Text>
           </TouchableOpacity>
